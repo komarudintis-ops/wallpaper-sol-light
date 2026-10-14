@@ -1,0 +1,317 @@
+name: Build Solana Light V3 APK
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-java@v4
+      with: { distribution: 'temurin', java-version: '17' }
+    - uses: gradle/actions/setup-gradle@v4
+      with: { gradle-version: '8.6' }
+    - name: Generate Project
+      run: |
+        mkdir -p app/src/main/java/com/solana/wallpaperlight app/src/main/res/xml app/src/main/res/values
+        cat << 'EOF' > settings.gradle
+        pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+        dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+        rootProject.name = "SolanaLightV3"
+        include ':app'
+        EOF
+        cat << 'EOF' > build.gradle
+        plugins { id 'com.android.application' version '8.2.2' apply false }
+        EOF
+        cat << 'EOF' > gradle.properties
+        org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+        android.useAndroidX=true
+        EOF
+        cat << 'EOF' > app/build.gradle
+        plugins { id 'com.android.application' }
+        android {
+          namespace 'com.solana.wallpaperlight'
+          compileSdk 34
+          defaultConfig { applicationId "com.solana.wallpaperlight"; minSdk 24; targetSdk 34; versionCode 3; versionName "3.0-LIGHT" }
+          compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+        }
+        EOF
+        cat << 'EOF' > app/src/main/res/values/strings.xml
+        <resources><string name="app_name">Solana Light V3</string></resources>
+        EOF
+        cat << 'EOF' > app/src/main/res/xml/wallpaper.xml
+        <wallpaper xmlns:android="http://schemas.android.com/apk/res/android" android:settingsActivity="com.solana.wallpaperlight.MainActivity" android:description="@string/app_name"/>
+        EOF
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+          <uses-permission android:name="android.permission.INTERNET"/>
+          <uses-feature android:name="android.software.live_wallpaper" android:required="true"/>
+          <application android:label="@string/app_name" android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar">
+            <activity android:name=".MainActivity" android:exported="true" android:excludeFromRecents="true" android:theme="@android:style/Theme.DeviceDefault.Light.Dialog.NoActionBar">
+              <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
+            </activity>
+            <service android:name=".SolanaWallpaperService" android:exported="true" android:label="Solana Light V3 (Bright Pearl)" android:permission="android.permission.BIND_WALLPAPER">
+              <intent-filter><action android:name="android.service.wallpaper.WallpaperService"/></intent-filter>
+              <meta-data android:name="android.service.wallpaper" android:resource="@xml/wallpaper"/>
+            </service>
+          </application>
+        </manifest>
+        EOF
+        cat << 'EOF' > app/src/main/java/com/solana/wallpaperlight/MainActivity.java
+        package com.solana.wallpaperlight;
+        import android.app.*; import android.content.*; import android.graphics.*; import android.graphics.drawable.GradientDrawable;
+        import android.os.Bundle; import android.view.Gravity; import android.widget.*; import java.util.Locale;
+        public class MainActivity extends Activity {
+          boolean upd = false;
+          int px(int v, float d) { return Math.round(v * d); }
+          GradientDrawable box(String c, float r, int sw, String sc) {
+            GradientDrawable g = new GradientDrawable(); g.setColor(Color.parseColor(c)); g.setCornerRadius(r);
+            if (sw > 0) g.setStroke(sw, Color.parseColor(sc)); return g;
+          }
+          @Override protected void onCreate(Bundle b) {
+            super.onCreate(b);
+            final SharedPreferences sp = getSharedPreferences("sol_v3_light", MODE_PRIVATE);
+            float cur = sp.getFloat("amt", 1.5f), tgt = sp.getFloat("tgt", 100f), avg = sp.getFloat("avg", 100f), dp = getResources().getDisplayMetrics().density;
+            LinearLayout rt = new LinearLayout(this); rt.setOrientation(LinearLayout.VERTICAL); rt.setGravity(Gravity.CENTER_HORIZONTAL);
+            rt.setPadding(px(22,dp), px(20,dp), px(22,dp), px(20,dp)); rt.setBackground(box("#FFFFFF", 22*dp, px(2,dp), "#E2E8F0"));
+            TextView tl = new TextView(this); tl.setText("SOLANA LIGHT V3 CONFIG"); tl.setTextColor(Color.parseColor("#0F172A")); tl.setTypeface(Typeface.DEFAULT_BOLD);
+            tl.setTextSize(14f); tl.setPadding(0,0,0,px(10,dp)); rt.addView(tl);
+            TextView l1 = new TextView(this); l1.setText("SALDO SAAT INI (SOL)"); l1.setTextSize(10f); l1.setTextColor(Color.parseColor("#64748B")); rt.addView(l1);
+            final EditText inS = new EditText(this); inS.setText(String.format(Locale.US,"%.2f",cur)); inS.setTextSize(20f); inS.setTextColor(Color.parseColor("#0F172A"));
+            inS.setTypeface(Typeface.DEFAULT_BOLD); inS.setGravity(Gravity.CENTER); inS.setInputType(8194);
+            inS.setBackground(box("#F8FAFC", 12*dp, px(2,dp), "#8B5CF6")); rt.addView(inS, new LinearLayout.LayoutParams(px(180,dp), px(44,dp)));
+            final SeekBar sb = new SeekBar(this); sb.setMax(1000); sb.setProgress(Math.round((cur/Math.max(1f,tgt))*1000f));
+            sb.setPadding(0,px(10,dp),0,px(10,dp)); rt.addView(sb, new LinearLayout.LayoutParams(px(250,dp), -2));
+            TextView l2 = new TextView(this); l2.setText("TARGET GOAL (SOL)"); l2.setTextSize(10f); l2.setTextColor(Color.parseColor("#64748B")); rt.addView(l2);
+            final EditText inT = new EditText(this); inT.setText(String.format(Locale.US,"%.0f",tgt)); inT.setTextSize(15f); inT.setTextColor(Color.parseColor("#059669"));
+            inT.setTypeface(Typeface.DEFAULT_BOLD); inT.setGravity(Gravity.CENTER); inT.setInputType(8194);
+            inT.setBackground(box("#F8FAFC", 10*dp, px(1,dp), "#10B981"));
+            LinearLayout.LayoutParams lpT = new LinearLayout.LayoutParams(px(150,dp), px(38,dp)); lpT.setMargins(0,px(4,dp),0,px(10,dp)); rt.addView(inT, lpT);
+            TextView l3 = new TextView(this); l3.setText("HARGA RATA-RATA BELI / AVG BUY ($)"); l3.setTextSize(10f); l3.setTextColor(Color.parseColor("#64748B")); rt.addView(l3);
+            final EditText inA = new EditText(this); inA.setText(String.format(Locale.US,"%.1f",avg)); inA.setTextSize(15f); inA.setTextColor(Color.parseColor("#0284C7"));
+            inA.setTypeface(Typeface.DEFAULT_BOLD); inA.setGravity(Gravity.CENTER); inA.setInputType(8194);
+            inA.setBackground(box("#F8FAFC", 10*dp, px(1,dp), "#0EA5E9"));
+            LinearLayout.LayoutParams lpA = new LinearLayout.LayoutParams(px(150,dp), px(38,dp)); lpA.setMargins(0,px(4,dp),0,px(14,dp)); rt.addView(inA, lpA);
+            sb.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+              public void onProgressChanged(SeekBar s, int p, boolean u) {
+                if (u && !upd) { upd=true; float m=100f; try{m=Math.max(1f,Float.parseFloat(inT.getText().toString()));}catch(Exception e){}
+                inS.setText(String.format(Locale.US,"%.2f",(p/1000f)*m)); upd=false; }
+              }
+              public void onStartTrackingTouch(SeekBar s){} public void onStopTrackingTouch(SeekBar s){}
+            });
+            Button bSv = new Button(this); bSv.setText("SIMPAN PENGATURAN"); bSv.setTextColor(Color.WHITE); bSv.setTypeface(Typeface.DEFAULT_BOLD);
+            bSv.setBackground(box("#10B981", 10*dp, 0, "#000000")); bSv.setOnClickListener(v -> { sv(sp,inS,inT,inA); finish(); });
+            rt.addView(bSv, new LinearLayout.LayoutParams(px(250,dp), px(42,dp)));
+            Button bWp = new Button(this); bWp.setText("PASANG LIVE WALLPAPER V3"); bWp.setTextSize(11f); bWp.setTextColor(Color.WHITE); bWp.setTypeface(Typeface.DEFAULT_BOLD);
+            GradientDrawable wg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.parseColor("#8B5CF6"),Color.parseColor("#0EA5E9")});
+            wg.setCornerRadius(10*dp); bWp.setBackground(wg);
+            bWp.setOnClickListener(v -> {
+              sv(sp,inS,inT,inA);
+              try { startActivity(new Intent(WallpaperManager.ACTION_CHANGE_LIVE_WALLPAPER).putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, new ComponentName(this, SolanaWallpaperService.class))); }
+              catch (Exception e) { startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)); }
+              finish();
+            });
+            LinearLayout.LayoutParams lpW = new LinearLayout.LayoutParams(px(250,dp), px(42,dp)); lpW.topMargin = px(8,dp); rt.addView(bWp, lpW);
+            setContentView(rt);
+          }
+          void sv(SharedPreferences p, EditText s, EditText t, EditText a) {
+            float v=1.5f, m=100f, av=100f;
+            try{v=Float.parseFloat(s.getText().toString());}catch(Exception e){}
+            try{m=Math.max(1f,Float.parseFloat(t.getText().toString()));}catch(Exception e){}
+            try{av=Math.max(1f,Float.parseFloat(a.getText().toString()));}catch(Exception e){}
+            p.edit().putFloat("amt", Math.max(0f,Math.min(m,v))).putFloat("tgt", m).putFloat("avg", av).apply();
+          }
+        }
+        EOF
+        cat << 'EOF' > app/src/main/java/com/solana/wallpaperlight/SolanaWallpaperService.java
+        package com.solana.wallpaperlight;
+        import android.content.*; import android.graphics.*; import android.os.*; import android.service.wallpaper.WallpaperService;
+        import android.view.*; import org.json.*; import java.io.*; import java.net.*; import java.text.*; import java.util.*; import java.util.concurrent.*;
+        public class SolanaWallpaperService extends WallpaperService {
+          @Override public Engine onCreateEngine() { return new LightEngine(); }
+          class LightEngine extends Engine {
+            final Handler hdl = new Handler(Looper.getMainLooper()); final ExecutorService ex = Executors.newSingleThreadExecutor();
+            boolean vis=false, idr=true, fch=false;
+            int thm=0;
+            float w=0, h=0, dp=1, cur=1.5f, anim=1.5f, tgt=100f, avg=100f, usd=107.57f, rpRate=17925f, chg=1.53f, btc=0f, jup=0f, uiA=1f, dx=0, dy=0;
+            long lFch=0, lTch=System.currentTimeMillis();
+            final RectF rM1=new RectF(), rM05=new RectF(), rCfg=new RectF(), rP05=new RectF(), rP1=new RectF(), rCrd1=new RectF(), rCrd2=new RectF(), rTop=new RectF(), rThm=new RectF();
+            final List<float[]> pts=new ArrayList<>(), cnf=new ArrayList<>();
+            final Paint p=new Paint(Paint.ANTI_ALIAS_FLAG), tp=new Paint(Paint.ANTI_ALIAS_FLAG);
+            final Random rnd=new Random();
+            final SimpleDateFormat clk=new SimpleDateFormat("HH:mm:ss",Locale.getDefault()), dtf=new SimpleDateFormat("EEEE, dd MMM yyyy",new Locale("id","ID"));
+            final Runnable lp = new Runnable(){ public void run(){ draw(); if(vis) hdl.postDelayed(this,16L); } };
+            @Override public void onCreate(SurfaceHolder sh){ super.onCreate(sh); setTouchEventsEnabled(true); dp=getResources().getDisplayMetrics().density; load(); }
+            void load(){
+              SharedPreferences sp=getSharedPreferences("sol_v3_light",MODE_PRIVATE);
+              tgt=Math.max(1f,sp.getFloat("tgt",100f)); cur=Math.max(0f,Math.min(tgt,sp.getFloat("amt",1.5f)));
+              avg=sp.getFloat("avg",100f); idr=sp.getBoolean("idr",true); thm=sp.getInt("thm",0);
+              usd=sp.getFloat("u",107.57f); rpRate=sp.getFloat("r",17925f); chg=sp.getFloat("c",1.53f); btc=sp.getFloat("btc",0f); jup=sp.getFloat("jup",0f);
+            }
+            @Override public void onVisibilityChanged(boolean v){
+              vis=v; if(v){ load(); lTch=System.currentTimeMillis(); fetch(false); hdl.removeCallbacks(lp); hdl.post(lp); } else hdl.removeCallbacks(lp);
+            }
+            @Override public void onSurfaceChanged(SurfaceHolder sh, int f, int sw, int shH){
+              super.onSurfaceChanged(sh,f,sw,shH); w=sw; h=shH; pts.clear();
+              for(int i=0;i<32;i++) pts.add(new float[]{rnd.nextFloat()*w, rnd.nextFloat()*h, (rnd.nextFloat()*2.5f+1f)*dp, -(rnd.nextFloat()*0.4f+0.12f)*dp, i%3});
+            }
+            void burst(float x, float y){
+              for(int i=0;i<24;i++){
+                double a=rnd.nextDouble()*Math.PI*2; float sp=(rnd.nextFloat()*5f+2f)*dp;
+                cnf.add(new float[]{x, y, (float)Math.cos(a)*sp, (float)Math.sin(a)*sp-2f*dp, (rnd.nextFloat()*3f+2f)*dp, 255f, i%4});
+              }
+            }
+            String http(String u) throws Exception {
+              HttpURLConnection c=(HttpURLConnection)new URL(u).openConnection(); c.setConnectTimeout(5000); c.setReadTimeout(5000);
+              BufferedReader br=new BufferedReader(new InputStreamReader(c.getInputStream())); StringBuilder sb=new StringBuilder(); String l;
+              while((l=br.readLine())!=null) sb.append(l); br.close(); return sb.toString();
+            }
+            void fetch(boolean frc){
+              long now=System.currentTimeMillis(); if(fch||(!frc && now-lFch<25000L)) return; fch=true; lFch=now;
+              ex.execute(()->{
+                try {
+                  JSONObject s=new JSONObject(http("https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd,idr&include_24hr_change=true")).optJSONObject("solana");
+                  if(s!=null && s.optDouble("usd",0)>0){ usd=(float)s.optDouble("usd"); rpRate=(float)s.optDouble("idr",usd*16300); chg=(float)s.optDouble("usd_24h_change",0); }
+                } catch(Exception e){}
+                try {
+                  JSONArray arr=new JSONArray(http("https://data-api.binance.vision/api/v3/ticker/24hr?symbols=[\"SOLUSDT\",\"BTCUSDT\",\"JUPUSDT\"]"));
+                  for(int i=0;i<arr.length();i++){
+                    JSONObject o=arr.getJSONObject(i); String sym=o.optString("symbol"); float pr=(float)o.optDouble("lastPrice",0);
+                    if("SOLUSDT".equals(sym)&&pr>0){ float ratio=rpRate>1000?(rpRate/Math.max(1f,usd)):16300f; usd=pr; rpRate=pr*ratio; chg=(float)o.optDouble("priceChangePercent",0); }
+                    else if("BTCUSDT".equals(sym)) btc=pr; else if("JUPUSDT".equals(sym)) jup=pr;
+                  }
+                } catch(Exception e){}
+                getSharedPreferences("sol_v3_light",MODE_PRIVATE).edit().putFloat("u",usd).putFloat("r",rpRate).putFloat("c",chg).putFloat("btc",btc).putFloat("jup",jup).apply();
+                fch=false;
+              });
+            }
+            @Override public void onTouchEvent(MotionEvent e){
+              if(e==null) return; lTch=System.currentTimeMillis();
+              if(e.getAction()==MotionEvent.ACTION_DOWN){ dx=e.getX(); dy=e.getY(); }
+              else if(e.getAction()==MotionEvent.ACTION_UP && Math.hypot(e.getX()-dx,e.getY()-dy)<16*dp){
+                float x=e.getX(), y=e.getY(); SharedPreferences sp=getSharedPreferences("sol_v3_light",MODE_PRIVATE);
+                if(rM1.contains(x,y)){ mod(-1f,sp,false,x,y); }
+                else if(rM05.contains(x,y)){ mod(-0.5f,sp,false,x,y); }
+                else if(rP05.contains(x,y)){ mod(0.5f,sp,true,x,y); }
+                else if(rP1.contains(x,y)){ mod(1f,sp,true,x,y); }
+                else if(rCfg.contains(x,y) || rCrd2.contains(x,y)) startActivity(new Intent(SolanaWallpaperService.this,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                else if(rCrd1.contains(x,y)){ idr=!idr; sp.edit().putBoolean("idr",idr).apply(); }
+                else if(rThm.contains(x,y)){ thm=(thm+1)%3; sp.edit().putInt("thm",thm).apply(); burst(x,y); }
+                else if(rTop.contains(x,y)) fetch(true);
+              }
+            }
+            void mod(float d, SharedPreferences sp, boolean b, float x, float y){
+              cur=Math.max(0f,Math.min(tgt,Math.round((cur+d)*100f)/100f)); sp.edit().putFloat("amt",cur).apply(); if(b) burst(x,y);
+            }
+            String rnk(float q){ return q>=100?"TIER: 100 SOL MASTER":q>=80?"TIER: SOLANA WHALE":q>=50?"TIER: SHARK SNIPER":q>=25?"TIER: DOLPHIN TRADER":q>=10?"TIER: CRAB HUSTLER":"TIER: SHRIMP ACCUMULATOR"; }
+            String rp(double v){ NumberFormat nf=NumberFormat.getNumberInstance(new Locale("id","ID")); nf.setMaximumFractionDigits(0); return "Rp "+nf.format(Math.round(v)); }
+            void draw(){ SurfaceHolder sh=getSurfaceHolder(); if(sh==null)return; Canvas c=null; try{c=sh.lockCanvas(); if(c!=null)render(c);}finally{if(c!=null)try{sh.unlockCanvasAndPost(c);}catch(Exception e){}} }
+            void render(Canvas c){
+              long now=System.currentTimeMillis(); if(now-lFch>25000L) fetch(false);
+              anim+=(cur-anim)*0.15f; uiA+=(((now-lTch>5000L)?0.35f:1f)-uiA)*0.08f;
+              float cx=w/2f, cy=h/2f, cw=Math.min(w*0.90f,370*dp);
+              int bg1=thm==1?Color.parseColor("#ECFEFF"):thm==2?Color.parseColor("#F0FDF4"):Color.parseColor("#F4F7FB");
+              int bg2=thm==1?Color.parseColor("#E0E7FF"):thm==2?Color.parseColor("#DCFCE7"):Color.parseColor("#EEF2FF");
+              p.setStyle(Paint.Style.FILL); p.setShader(new LinearGradient(0,0,w,h,bg1,bg2,Shader.TileMode.CLAMP));
+              c.drawRect(0,0,w,h,p); p.setShader(null);
+              int[] pCols={Color.parseColor("#8B5CF6"),Color.parseColor("#0EA5E9"),Color.parseColor("#10B981"),Color.parseColor("#F59E0B")};
+              for(float[] pt:pts){
+                pt[1]+=pt[3]; if(pt[1]<-10*dp) pt[1]=h+10*dp;
+                p.setColor(pCols[(int)pt[4]%3]); p.setAlpha(75); c.drawCircle(pt[0],pt[1],pt[2],p);
+              }
+              Iterator<float[]> it=cnf.iterator();
+              while(it.hasNext()){
+                float[] cf=it.next(); cf[0]+=cf[2]; cf[1]+=cf[3]; cf[3]+=0.18f*dp; cf[5]-=7f;
+                if(cf[5]<=0) it.remove(); else { p.setColor(pCols[(int)cf[6]%4]); p.setAlpha((int)cf[5]); c.drawCircle(cf[0],cf[1],cf[4],p); }
+              }
+              p.setAlpha(255);
+              RectF hud=new RectF(cx-cw/2f, cy-255*dp, cx+cw/2f, cy+265*dp);
+              p.setColor(Color.parseColor("#D9FFFFFF")); c.drawRoundRect(hud,28*dp,28*dp,p);
+              p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1.5f*dp); p.setColor(Color.parseColor("#FFFFFFFF")); c.drawRoundRect(hud,28*dp,28*dp,p); p.setStyle(Paint.Style.FILL);
+              float inW=cw-32*dp, left=cx-inW/2f, right=cx+inW/2f;
+              rTop.set(left, hud.top+14*dp, right, hud.top+40*dp);
+              p.setColor(Color.parseColor("#F1F5F9")); c.drawRoundRect(rTop,12*dp,12*dp,p);
+              tp.setTextAlign(Paint.Align.CENTER); tp.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD)); tp.setTextSize(10f*dp); tp.setColor(Color.parseColor("#334155"));
+              String eco=String.format(Locale.US,"BTC $%,.0f  •  SOL $%.2f (%s%.1f%%)  •  JUP $%.2f", btc>0?btc:68000f, usd, chg>=0?"+":"", chg, jup>0?jup:0.85f);
+              c.drawText(eco, cx, rTop.centerY()+3.5f*dp, tp);
+              Date dNow=new Date(now);
+              tp.setTextSize(25f*dp); tp.setLetterSpacing(0.05f); tp.setColor(Color.parseColor("#0F172A")); c.drawText(clk.format(dNow), cx, hud.top+72*dp, tp);
+              tp.setTypeface(Typeface.DEFAULT); tp.setTextSize(10f*dp); tp.setLetterSpacing(0.12f); tp.setColor(Color.parseColor("#64748B"));
+              c.drawText(dtf.format(dNow).toUpperCase(Locale.getDefault()), cx, hud.top+88*dp, tp);
+              float flt=(float)Math.sin(now/850.0)*3.5f*dp;
+              RectF badge=new RectF(cx-26*dp, hud.top+100*dp+flt, cx+26*dp, hud.top+142*dp+flt);
+              p.setColor(Color.parseColor("#0F172A")); c.drawRoundRect(badge,13*dp,13*dp,p);
+              p.setShader(new LinearGradient(badge.left+10*dp,0,badge.right-10*dp,0,new int[]{Color.parseColor("#9945FF"),Color.parseColor("#00C2FF"),Color.parseColor("#14F195")},null,Shader.TileMode.CLAMP));
+              for(int i=0;i<3;i++){ float shf=(i==1)?-2*dp:2*dp, by=badge.top+10*dp+i*9*dp; c.drawRoundRect(new RectF(cx-15*dp+shf,by,cx+15*dp+shf,by+4.5f*dp),2.5f*dp,2.5f*dp,p); }
+              p.setShader(null);
+              tp.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD)); tp.setTextSize(14f*dp); tp.setLetterSpacing(0.18f); tp.setColor(Color.parseColor("#0F172A"));
+              c.drawText(String.format(Locale.US,"ROAD TO %.0f SOL",tgt), cx, hud.top+164*dp, tp);
+              float pct=Math.max(0f,Math.min(100f,(cur/Math.max(1f,tgt))*100f));
+              tp.setTextSize(9.5f*dp); tp.setLetterSpacing(0.1f); tp.setColor(Color.parseColor("#6D28D9"));
+              c.drawText(rnk(pct), cx, hud.top+180*dp, tp);
+              RectF trk=new RectF(left, hud.top+192*dp, right, hud.top+220*dp);
+              p.setColor(Color.parseColor("#E2E8F0")); c.drawRoundRect(trk,12*dp,12*dp,p);
+              float rat=Math.max(0.03f,Math.min(1f,anim/Math.max(1f,tgt)));
+              RectF fil=new RectF(trk.left, trk.top, trk.left+trk.width()*rat, trk.bottom);
+              c.save(); Path cp=new Path(); cp.addRoundRect(trk,12*dp,12*dp,Path.Direction.CW); c.clipPath(cp);
+              float gs=((now%3000L)/3000f)*trk.width();
+              p.setShader(new LinearGradient(trk.left-gs,0,trk.right+trk.width()-gs,0,new int[]{Color.parseColor("#9945FF"),Color.parseColor("#00C2FF"),Color.parseColor("#10B981"),Color.parseColor("#9945FF")},null,Shader.TileMode.REPEAT));
+              c.drawRoundRect(fil,12*dp,12*dp,p); p.setShader(null); c.restore();
+              tp.setTextSize(10f*dp); tp.setLetterSpacing(0.04f);
+              tp.setTextAlign(Paint.Align.LEFT); tp.setColor(Color.parseColor("#7C3AED")); c.drawText("0 SOL", left, trk.bottom+15*dp, tp);
+              tp.setTextAlign(Paint.Align.CENTER); tp.setColor(Color.parseColor("#94A3B8")); c.drawText("25%   •   50%   •   75%", cx, trk.bottom+15*dp, tp);
+              tp.setTextAlign(Paint.Align.RIGHT); tp.setColor(Color.parseColor("#059669")); c.drawText(String.format(Locale.US,"%.0f SOL",tgt), right, trk.bottom+15*dp, tp);
+              tp.setTextAlign(Paint.Align.CENTER); tp.setTextSize(34f*dp); tp.setLetterSpacing(-0.02f);
+              tp.setShader(new LinearGradient(cx-80*dp,0,cx+80*dp,0,new int[]{Color.parseColor("#0F172A"),Color.parseColor("#7C3AED"),Color.parseColor("#059669")},null,Shader.TileMode.CLAMP));
+              c.drawText(String.format(Locale.US,"%.2f SOL",cur), cx, trk.bottom+54*dp, tp); tp.setShader(null);
+              tp.setTypeface(Typeface.DEFAULT); tp.setTextSize(11f*dp); tp.setColor(Color.parseColor("#475569"));
+              c.drawText(String.format(Locale.US,"Progres: %.1f%%  •  Kurang %.2f SOL",pct,Math.max(0f,tgt-cur)), cx, trk.bottom+72*dp, tp);
+              rCrd1.set(left, trk.bottom+84*dp, right, trk.bottom+138*dp);
+              p.setColor(Color.parseColor("#F8FAFC")); c.drawRoundRect(rCrd1,14*dp,14*dp,p);
+              p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1f*dp); p.setColor(Color.parseColor("#CBD5E1")); c.drawRoundRect(rCrd1,14*dp,14*dp,p); p.setStyle(Paint.Style.FILL);
+              String mFiat=idr?"≈ "+rp(cur*rpRate)+"  ("+String.format(Locale.US,"$%,.2f",cur*usd)+")":String.format(Locale.US,"≈ $%,.2f USD  (%s)",cur*usd,rp(cur*rpRate));
+              String sFiat="Target "+String.format(Locale.US,"%.0f SOL: ",tgt)+(idr?rp(tgt*rpRate):String.format(Locale.US,"$%,.0f USD",tgt*usd))+" • Ketuk tukar IDR/USD";
+              tp.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD)); tp.setTextSize(13.5f*dp); tp.setColor(Color.parseColor("#059669"));
+              c.drawText(mFiat, cx, rCrd1.top+22*dp, tp);
+              tp.setTypeface(Typeface.DEFAULT); tp.setTextSize(9.5f*dp); tp.setColor(Color.parseColor("#64748B"));
+              c.drawText(sFiat, cx, rCrd1.top+41*dp, tp);
+              rCrd2.set(left, rCrd1.bottom+8*dp, right, rCrd1.bottom+54*dp);
+              p.setColor(Color.parseColor("#F8FAFC")); c.drawRoundRect(rCrd2,14*dp,14*dp,p);
+              float pnlPct=avg>0?((usd-avg)/avg)*100f:0f, pnlRp=(usd-avg)*cur*rpRate, stkSol=cur*0.072f;
+              tp.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD)); tp.setTextSize(11f*dp);
+              tp.setColor(pnlPct>=0?Color.parseColor("#059669"):Color.parseColor("#E11D48"));
+              c.drawText(String.format(Locale.US,"PnL (Avg $%.0f): %s%.1f%% (%s%s)",avg,pnlPct>=0?"+":"",pnlPct,pnlRp>=0?"+":"",rp(pnlRp)), cx, rCrd2.top+19*dp, tp);
+              tp.setTypeface(Typeface.DEFAULT); tp.setTextSize(9.5f*dp); tp.setColor(Color.parseColor("#6D28D9"));
+              c.drawText(String.format(Locale.US,"Estimasi Staking (~7.2%% APY): +%.2f SOL / tahun",stkSol), cx, rCrd2.top+36*dp, tp);
+              float bTop=rCrd2.bottom+12*dp, bH=36*dp, gap=5*dp, stepW=(inW-106*dp-gap*4)/4f;
+              rM1.set(left, bTop, left+stepW, bTop+bH);
+              rM05.set(rM1.right+gap, bTop, rM1.right+gap+stepW, bTop+bH);
+              rCfg.set(rM05.right+gap, bTop, rM05.right+gap+106*dp, bTop+bH);
+              rP05.set(rCfg.right+gap, bTop, rCfg.right+gap+stepW, bTop+bH);
+              rP1.set(rP05.right+gap, bTop, right, bTop+bH);
+              int ba=Math.round(255*uiA);
+              RectF[] sbs={rM1,rM05,rP05,rP1}; String[] lbs={"-1","-0.5","+0.5","+1"};
+              tp.setTypeface(Typeface.create(Typeface.DEFAULT,Typeface.BOLD)); tp.setTextSize(11.5f*dp);
+              for(int i=0;i<4;i++){
+                p.setColor(Color.WHITE); p.setAlpha(ba); c.drawRoundRect(sbs[i],9*dp,9*dp,p);
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1f*dp); p.setColor(Color.parseColor("#CBD5E1")); p.setAlpha(ba); c.drawRoundRect(sbs[i],9*dp,9*dp,p); p.setStyle(Paint.Style.FILL);
+                tp.setColor(Color.parseColor("#0F172A")); tp.setAlpha(ba); c.drawText(lbs[i], sbs[i].centerX(), bTop+22.5f*dp, tp);
+              }
+              p.setColor(Color.WHITE); p.setAlpha(ba);
+              p.setShader(new LinearGradient(rCfg.left,bTop,rCfg.right,bTop+bH,new int[]{Color.parseColor("#8B5CF6"),Color.parseColor("#0EA5E9"),Color.parseColor("#10B981")},null,Shader.TileMode.CLAMP));
+              c.drawRoundRect(rCfg,9*dp,9*dp,p); p.setShader(null);
+              tp.setColor(Color.WHITE); tp.setAlpha(ba); tp.setTextSize(11f*dp); c.drawText("ATUR SALDO", rCfg.centerX(), bTop+22f*dp, tp);
+              String[] tNames={"TEMA: PEARL DAYLIGHT","TEMA: HOLO SKY","TEMA: MINT BREEZE"};
+              rThm.set(cx-85*dp, bTop+bH+8*dp, cx+85*dp, bTop+bH+28*dp);
+              p.setColor(Color.parseColor("#188B5CF6")); p.setAlpha(ba); c.drawRoundRect(rThm,10*dp,10*dp,p);
+              tp.setTextSize(9.5f*dp); tp.setColor(Color.parseColor("#6D28D9")); tp.setAlpha(ba);
+              c.drawText(tNames[thm], cx, rThm.centerY()+3.5f*dp, tp); tp.setAlpha(255);
+            }
+          }
+        }
+        EOF
+    - name: Build APK
+      run: |
+        gradle assembleDebug
+        cp app/build/outputs/apk/debug/app-debug.apk Solana-Light-V3.apk
+    - uses: actions/upload-artifact@v4
+      with:
+        name: Solana-Light-V3-APK
+        path: Solana-Light-V3.apk
